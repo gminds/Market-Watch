@@ -1,0 +1,6 @@
+{
+  "name": "Market Profile Scanner & Forecast",
+  "description": "Professional quantitative market profile scanner, daily forecast dashboard, and auction imbalance analyzer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
