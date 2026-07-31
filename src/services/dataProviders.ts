@@ -26,17 +26,17 @@ export class DataProviderService {
   private activeProviderId: DataProviderId = 'twelvedata';
   private listeners: Array<(activeProvider: DataProviderStatus) => void> = [];
   private basePriceMap: Record<SymbolCode, number> = {
-    GBPUSD: 1.32890,
-    EURUSD: 1.13810,
-    USDJPY: 163.83,
-    AUDUSD: 0.6975,
-    USDCHF: 0.8194,
-    USDCAD: 1.4104,
-    NZDUSD: 0.5779,
-    GBPJPY: 217.72,
-    XAUUSD: 2420.00,
-    BTCUSD: 63860.00,
-    ETHUSD: 1913.50,
+    GBPUSD: 1.33670,
+    EURUSD: 1.14710,
+    USDJPY: 163.369,
+    AUDUSD: 0.69610,
+    USDCHF: 0.81370,
+    USDCAD: 1.40400,
+    NZDUSD: 0.58040,
+    GBPJPY: 218.376,
+    XAUUSD: 4151.40,
+    BTCUSD: 63868.88,
+    ETHUSD: 1904.91,
   };
 
   constructor() {
@@ -269,7 +269,7 @@ export class DataProviderService {
   }
 
   public getBasePrice(symbol: SymbolCode): number {
-    return this.basePriceMap[symbol] || SYMBOL_CONFIGS[symbol]?.basePrice || 1.32890;
+    return this.basePriceMap[symbol] || SYMBOL_CONFIGS[symbol]?.basePrice || 1.33670;
   }
 
   public setBasePrice(symbol: SymbolCode, price: number) {

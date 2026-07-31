@@ -10,7 +10,7 @@ export const SYMBOL_CONFIGS: Record<string, SymbolConfig> = {
     defaultSessionStart: '07:00',
     defaultSessionEnd: '16:00',
     timezone: 'UTC',
-    basePrice: 1.13810,
+    basePrice: 1.14710,
     decimalPlaces: 5,
   },
   GBPUSD: {
@@ -22,7 +22,7 @@ export const SYMBOL_CONFIGS: Record<string, SymbolConfig> = {
     defaultSessionStart: '08:00',
     defaultSessionEnd: '16:30',
     timezone: 'UTC',
-    basePrice: 1.32890,
+    basePrice: 1.33670,
     decimalPlaces: 5,
   },
   USDJPY: {

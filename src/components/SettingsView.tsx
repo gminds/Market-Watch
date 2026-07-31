@@ -20,6 +20,7 @@ import {
   Wifi,
 } from 'lucide-react';
 import { alertEngine } from '../services/alertEngine';
+import { dataProviderService } from '../services/dataProviders';
 import { PROVIDER_CATALOG } from '../config/providers';
 
 interface SettingsViewProps {
@@ -61,7 +62,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onSaveSett
         score: 88,
         signalType: 'BULLISH_IMBALANCE',
         shape: 'P Profile',
-        price: 1.32890,
+        price: dataProviderService.getBasePrice(formData.symbol),
         sentToBrowser: false,
         sentToWebhook: true,
         sentToTelegram: false,

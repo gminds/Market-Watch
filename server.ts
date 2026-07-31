@@ -35,6 +35,42 @@ async function startServer() {
 
   // Helper to fetch live rate for forex, crypto, and commodities
   async function fetchLiveMarketRate(symbol: string): Promise<number | null> {
+    const yahooSymbol =
+      symbol === 'XAUUSD'
+        ? 'GC=F'
+        : symbol === 'BTCUSD'
+        ? 'BTC-USD'
+        : symbol === 'ETHUSD'
+        ? 'ETH-USD'
+        : `${symbol}=X`;
+
+    try {
+      const yRes = await fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1m&range=1d`,
+        { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) MarketProfileScanner/1.0' } }
+      );
+      if (yRes.ok) {
+        const yData = await yRes.json();
+        const price = yData?.chart?.result?.[0]?.meta?.regularMarketPrice;
+        if (typeof price === 'number' && !isNaN(price) && price > 0) {
+          const decimals = symbol.includes('JPY') ? 3 : symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('XAU') ? 2 : 5;
+          return Number(price.toFixed(decimals));
+        }
+      }
+    } catch (e) {}
+
+    if (symbol === 'BTCUSD' || symbol === 'ETHUSD') {
+      try {
+        const cbRes = await fetch('https://api.coinbase.com/v2/exchange-rates?currency=USD');
+        if (cbRes.ok) {
+          const cbData = await cbRes.json();
+          const cbRates = cbData?.data?.rates || {};
+          if (symbol === 'BTCUSD' && cbRates.BTC) return Number((1 / cbRates.BTC).toFixed(2));
+          if (symbol === 'ETHUSD' && cbRates.ETH) return Number((1 / cbRates.ETH).toFixed(2));
+        }
+      } catch (e) {}
+    }
+
     try {
       const fxRes = await fetch('https://open.er-api.com/v6/latest/USD', {
         headers: { 'User-Agent': 'MarketProfileScanner/1.0' },
@@ -51,21 +87,7 @@ async function startServer() {
         if (symbol === 'NZDUSD' && rates.NZD) return Number((1 / rates.NZD).toFixed(5));
         if (symbol === 'GBPJPY' && rates.JPY && rates.GBP) return Number((rates.JPY / rates.GBP).toFixed(3));
       }
-    } catch (e) {
-      // Fallback to secondary endpoint
-    }
-
-    if (symbol === 'BTCUSD' || symbol === 'ETHUSD') {
-      try {
-        const cbRes = await fetch('https://api.coinbase.com/v2/exchange-rates?currency=USD');
-        if (cbRes.ok) {
-          const cbData = await cbRes.json();
-          const cbRates = cbData?.data?.rates || {};
-          if (symbol === 'BTCUSD' && cbRates.BTC) return Number((1 / cbRates.BTC).toFixed(2));
-          if (symbol === 'ETHUSD' && cbRates.ETH) return Number((1 / cbRates.ETH).toFixed(2));
-        }
-      } catch (e) {}
-    }
+    } catch (e) {}
 
     return null;
   }
@@ -75,13 +97,18 @@ async function startServer() {
     const symbol = (req.params.symbol || 'GBPUSD').toUpperCase();
     const count = Number(req.query.count) || 300;
 
-    // 1. First attempt to fetch live market price from Open Exchange / Coinbase API
-    const livePrice = await fetchLiveMarketRate(symbol);
-
-    // 2. Try Yahoo Finance feed
+    // 1. Try Yahoo Finance feed with interval=5m & range=2d for rich auction coverage
     try {
-      const yahooSymbol = symbol === 'GBPUSD' ? 'GBPUSD=X' : symbol === 'XAUUSD' ? 'GC=F' : `${symbol}=X`;
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1m&range=1d`;
+      const yahooSymbol =
+        symbol === 'XAUUSD'
+          ? 'GC=F'
+          : symbol === 'BTCUSD'
+          ? 'BTC-USD'
+          : symbol === 'ETHUSD'
+          ? 'ETH-USD'
+          : `${symbol}=X`;
+
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=5m&range=2d`;
       
       const response = await fetch(url, {
         headers: {
@@ -102,6 +129,9 @@ async function startServer() {
           const closes: number[] = quote.close || [];
           const volumes: number[] = quote.volume || [];
 
+          const metaPrice = result.meta?.regularMarketPrice;
+          const decimals = symbol.includes('JPY') ? 3 : symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('XAU') ? 2 : 5;
+
           const candles = [];
           for (let i = 0; i < timestamps.length; i++) {
             if (closes[i] != null && opens[i] != null) {
@@ -115,20 +145,29 @@ async function startServer() {
                 timestamp: timestamps[i] * 1000,
                 timeStr,
                 dateStr,
-                open: Number(opens[i].toFixed(symbol.includes('JPY') ? 3 : symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('XAU') ? 2 : 5)),
-                high: Number(highs[i].toFixed(symbol.includes('JPY') ? 3 : symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('XAU') ? 2 : 5)),
-                low: Number(lows[i].toFixed(symbol.includes('JPY') ? 3 : symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('XAU') ? 2 : 5)),
-                close: Number(closes[i].toFixed(symbol.includes('JPY') ? 3 : symbol.includes('BTC') || symbol.includes('ETH') || symbol.includes('XAU') ? 2 : 5)),
+                open: Number(opens[i].toFixed(decimals)),
+                high: Number(highs[i].toFixed(decimals)),
+                low: Number(lows[i].toFixed(decimals)),
+                close: Number(closes[i].toFixed(decimals)),
                 volume: volumes[i] || Math.floor(100 + Math.random() * 200),
               });
             }
           }
 
           if (candles.length > 0) {
+            const currentPrice = typeof metaPrice === 'number' && !isNaN(metaPrice) && metaPrice > 0
+              ? Number(metaPrice.toFixed(decimals))
+              : candles[candles.length - 1].close;
+
+            // Ensure last candle close matches current market live price
+            candles[candles.length - 1].close = currentPrice;
+            if (currentPrice > candles[candles.length - 1].high) candles[candles.length - 1].high = currentPrice;
+            if (currentPrice < candles[candles.length - 1].low) candles[candles.length - 1].low = currentPrice;
+
             return res.json({
               symbol,
               provider: 'Yahoo Finance Public Feed',
-              currentPrice: candles[candles.length - 1].close,
+              currentPrice,
               candles: candles.slice(-count),
             });
           }
@@ -137,6 +176,9 @@ async function startServer() {
     } catch (e) {
       // Fallback
     }
+
+    // 2. Fallback: Fetch live market rate and generate real-time anchored candles
+    const livePrice = await fetchLiveMarketRate(symbol);
 
     // 3. Fallback: Generate real-time anchored 1-min candles using live rate
     if (livePrice != null) {
