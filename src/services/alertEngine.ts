@@ -1,8 +1,10 @@
-import { AlertItem, MarketProfileData, SignalType, UserSettings } from '../types/market';
+import { AlertItem, MarketProfileData, SignalType, UserSettings, SymbolCode } from '../types/market';
+import { signalTrackerService } from './signalTrackerService';
 
 export class AlertEngine {
   private alertHistory: AlertItem[] = [];
   private lastAlertTimestamp: number = 0;
+  private symbolLastAlertMap: Map<SymbolCode, number> = new Map();
   private sentAlertKeys: Set<string> = new Set();
   private audioContext: AudioContext | null = null;
 
@@ -45,6 +47,11 @@ export class AlertEngine {
   public evaluateAndAlert(profile: MarketProfileData, settings: UserSettings): AlertItem | null {
     if (!profile) return null;
 
+    // Suppress if symbol is muted to eliminate noise
+    if (signalTrackerService.isSymbolMuted(profile.symbol)) {
+      return null;
+    }
+
     const threshold = settings.alertScoreThreshold || 75;
     const isHighScore = profile.marketScore >= threshold;
     const hasImbalanceEvent = profile.events.some((e) => e.severity === 'critical' || e.severity === 'high');
@@ -60,7 +67,13 @@ export class AlertEngine {
       return null; // Suppress duplicate alert
     }
 
-    // Cooldown check (minimum 2 minutes between alerts)
+    // Per-symbol cooldown check (minimum 10 minutes between alerts for the same asset)
+    const lastSymbolAlert = this.symbolLastAlertMap.get(profile.symbol) || 0;
+    if (Date.now() - lastSymbolAlert < 600000) {
+      return null;
+    }
+
+    // Global cooldown check (minimum 2 minutes between any alert)
     if (Date.now() - this.lastAlertTimestamp < 120000) {
       return null;
     }
@@ -95,6 +108,7 @@ export class AlertEngine {
     // Mark as sent
     this.sentAlertKeys.add(alertKey);
     this.lastAlertTimestamp = Date.now();
+    this.symbolLastAlertMap.set(profile.symbol, Date.now());
     this.alertHistory.unshift(newAlert);
     this.saveHistory();
 

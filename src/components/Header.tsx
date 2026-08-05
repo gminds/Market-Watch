@@ -14,6 +14,9 @@ import {
   ChevronDown,
   Zap,
   Sparkles,
+  Newspaper,
+  Target,
+  ShieldAlert,
 } from 'lucide-react';
 import { ActiveTabType, DataProviderStatus, UserSettings } from '../types/market';
 import { dataProviderService } from '../services/dataProviders';
@@ -200,6 +203,30 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('risk')}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              activeTab === 'risk'
+                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40 shadow-sm'
+                : 'text-[#71717a] hover:text-[#e0e0e0] hover:bg-[#161618]'
+            }`}
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-blue-400" />
+            <span>Risk Management</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('news')}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              activeTab === 'news'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                : 'text-[#71717a] hover:text-[#e0e0e0] hover:bg-[#161618]'
+            }`}
+          >
+            <Newspaper className="w-3.5 h-3.5 text-amber-400" />
+            <span>Smart News Watch</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('scanner')}
             className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
               activeTab === 'scanner'
@@ -209,6 +236,18 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Zap className="w-3.5 h-3.5 text-blue-400" />
             <span>Multi-Pair Scanner</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('signals')}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all ${
+              activeTab === 'signals'
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                : 'text-[#71717a] hover:text-[#e0e0e0] hover:bg-[#161618]'
+            }`}
+          >
+            <Target className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+            <span>Signal Tracker</span>
           </button>
 
           <button

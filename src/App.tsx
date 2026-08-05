@@ -19,6 +19,7 @@ import {
 } from './types/market';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
+import { SmartNewsView } from './components/SmartNewsView';
 import { ScannerGrid } from './components/ScannerGrid';
 import { CorrelationView } from './components/CorrelationView';
 import { SimilarityView } from './components/SimilarityView';
@@ -26,6 +27,8 @@ import { ChartView } from './components/ChartView';
 import { ProfileLibraryView } from './components/ProfileLibraryView';
 import { AlertsLogView } from './components/AlertsLogView';
 import { SettingsView } from './components/SettingsView';
+import { SignalOutcomeTrackerView } from './components/SignalOutcomeTrackerView';
+import { RiskManagementView } from './components/RiskManagementView';
 import { NotificationToast } from './components/NotificationToast';
 
 import { dataProviderService } from './services/dataProviders';
@@ -237,6 +240,18 @@ export default function App() {
             onOpenFullChart={() => setActiveTab('chart')}
             onOpenSimilarityTab={() => setActiveTab('similarity')}
             onOpenForecastTab={() => setActiveTab('forecast')}
+            onOpenNewsTab={() => setActiveTab('news')}
+          />
+        )}
+
+        {activeTab === 'risk' && <RiskManagementView />}
+
+        {activeTab === 'news' && currentProfile && (
+          <SmartNewsView
+            activeSymbol={settings.symbol}
+            onSelectPair={handleSelectPair}
+            similarityResult={similarityResult}
+            currentProfile={currentProfile}
           />
         )}
 
@@ -246,6 +261,16 @@ export default function App() {
               scannerItems={scannerItems}
               onSelectPair={handleSelectPair}
               activeSymbol={settings.symbol}
+              activeProfile={currentProfile}
+            />
+          </div>
+        )}
+
+        {activeTab === 'signals' && (
+          <div className="max-w-7xl mx-auto px-4 py-6">
+            <SignalOutcomeTrackerView
+              currentProfile={currentProfile}
+              onSelectPair={handleSelectPair}
             />
           </div>
         )}

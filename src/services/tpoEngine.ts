@@ -66,7 +66,8 @@ export function buildMarketProfile(
   isDeveloping: boolean = true,
   sessionStart: string = '08:00',
   sessionEnd: string = '16:30',
-  stepPipsOverride?: number
+  stepPipsOverride?: number,
+  prevDayLevels?: { vah: number; val: number; poc: number }
 ): MarketProfileData {
   const symbolConfig = SYMBOL_CONFIGS[symbol] || SYMBOL_CONFIGS.GBPUSD;
   const stepSize = stepPipsOverride ? stepPipsOverride * symbolConfig.pipValue : symbolConfig.tpoPriceStep;
@@ -412,15 +413,203 @@ export function buildMarketProfile(
     profileShape = 'D Profile';
   }
 
-  // 10. Imbalance Events Detection
+  // 10. Imbalance & Live Auction Events Detection
   const events: ImbalanceEvent[] = [];
+  const latestTimeStr = candles[candles.length - 1]?.timeStr || '12:00';
+
+  // Retrieve Previous Day Levels if not provided
+  let prevLevels = prevDayLevels;
+  if (!prevLevels && typeof localStorage !== 'undefined') {
+    try {
+      const storedHistory = localStorage.getItem('mps_daily_profiles_v18');
+      if (storedHistory) {
+        const historyArr = JSON.parse(storedHistory);
+        const match = historyArr.find(
+          (r: { symbol?: string; tradingDate: string; vah?: number; val?: number; poc?: number }) =>
+            (r.symbol || 'GBPUSD') === symbol && r.tradingDate !== dateStr
+        );
+        if (match && match.vah && match.val && match.poc) {
+          prevLevels = { vah: match.vah, val: match.val, poc: match.poc };
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Fallback: derive complete previous day profile levels from candle history if available
+  if (!prevLevels && candles && candles.length > 0) {
+    const priorCandles = candles.filter((c) => c.dateStr && c.dateStr < dateStr);
+    if (priorCandles.length > 0) {
+      const lastPriorDate = priorCandles[priorCandles.length - 1].dateStr;
+      const prevDayCandles = priorCandles.filter((c) => c.dateStr === lastPriorDate);
+      if (prevDayCandles.length >= 5) {
+        const pHigh = Math.max(...prevDayCandles.map((c) => c.high));
+        const pLow = Math.min(...prevDayCandles.map((c) => c.low));
+        const pClose = prevDayCandles[prevDayCandles.length - 1].close;
+        const pPoc = (pHigh + pLow + pClose) / 3;
+        const pRange = Math.max(pHigh - pLow, symbolConfig.pipValue * 10);
+        const pVah = pPoc + pRange * 0.25;
+        const pVal = pPoc - pRange * 0.25;
+        prevLevels = { vah: pVah, val: pVal, poc: pPoc };
+      }
+    }
+  }
+
+  const hasPrevDayProfileComplete = Boolean(
+    prevLevels && typeof prevLevels.vah === 'number' && prevLevels.vah > 0 && typeof prevLevels.val === 'number' && prevLevels.val > 0
+  );
+
+  // 10A. Buying & Selling Tail Developing Detection
+  // Buying Tail: Single prints or excess at session low with price moving up away from low
+  const tailBottomRow = rawRows[rawRows.length - 1];
+  const secondBottomRow = rawRows[rawRows.length - 2];
+  const hasBuyingTailPrint =
+    (tailBottomRow && (tailBottomRow.tpoCount === 1 || tailBottomRow.isExcess || tailBottomRow.isSinglePrint)) ||
+    (secondBottomRow && secondBottomRow.tpoCount <= 2 && tailBottomRow?.tpoCount === 1);
+  const isPriceAboveLowRejection = close > sessionLow + stepSize * 1.5;
+
+  if (hasBuyingTailPrint && isPriceAboveLowRejection) {
+    const rejectionPips = Math.round((close - sessionLow) / symbolConfig.pipValue);
+    events.push({
+      id: `buying-tail-${Date.now()}`,
+      timestamp: Date.now(),
+      timeStr: latestTimeStr,
+      dateStr,
+      type: 'Buying Tail Developing',
+      price: sessionLow,
+      details: `Buying tail developing at ${sessionLow.toFixed(5)} (${rejectionPips} pips rejection at low). Aggressive buyers defending lower prices.`,
+      severity: 'high',
+    });
+  }
+
+  // Selling Tail: Single prints or excess at session high with price moving down away from high
+  const tailTopRow = rawRows[0];
+  const secondTopRow = rawRows[1];
+  const hasSellingTailPrint =
+    (tailTopRow && (tailTopRow.tpoCount === 1 || tailTopRow.isExcess || tailTopRow.isSinglePrint)) ||
+    (secondTopRow && secondTopRow.tpoCount <= 2 && tailTopRow?.tpoCount === 1);
+  const isPriceBelowHighRejection = close < sessionHigh - stepSize * 1.5;
+
+  if (hasSellingTailPrint && isPriceBelowHighRejection) {
+    const rejectionPips = Math.round((sessionHigh - close) / symbolConfig.pipValue);
+    events.push({
+      id: `selling-tail-${Date.now()}`,
+      timestamp: Date.now(),
+      timeStr: latestTimeStr,
+      dateStr,
+      type: 'Selling Tail Developing',
+      price: sessionHigh,
+      details: `Selling tail developing at ${sessionHigh.toFixed(5)} (${rejectionPips} pips rejection at high). Aggressive sellers defending higher prices.`,
+      severity: 'high',
+    });
+  }
+
+  // 10B. POC & Value Area Migration or Balance Detection
+  const pocMidDiff = Math.abs(pocPrice - (sessionHigh + sessionLow) / 2) / Math.max(0.0001, sessionHigh - sessionLow);
+  const isPocCentered = pocMidDiff <= 0.15;
+
+  if (pocRelativePosition >= 0.60 || pocPrice > open + stepSize * 2.5) {
+    events.push({
+      id: `poc-migrating-higher-${Date.now()}`,
+      timestamp: Date.now(),
+      timeStr: latestTimeStr,
+      dateStr,
+      type: 'POC Migration Higher',
+      price: pocPrice,
+      details: `POC migrating higher to ${pocPrice.toFixed(5)}. Buyers expanding value toward session highs.`,
+      severity: 'warning',
+    });
+  } else if (pocRelativePosition <= 0.40 || pocPrice < open - stepSize * 2.5) {
+    events.push({
+      id: `poc-migrating-lower-${Date.now()}`,
+      timestamp: Date.now(),
+      timeStr: latestTimeStr,
+      dateStr,
+      type: 'POC Migration Lower',
+      price: pocPrice,
+      details: `POC migrating lower to ${pocPrice.toFixed(5)}. Sellers expanding value toward session lows.`,
+      severity: 'warning',
+    });
+  } else if (isPocCentered || profileShape === 'D Profile' || profileShape === 'Neutral Day') {
+    events.push({
+      id: `poc-va-balanced-${Date.now()}`,
+      timestamp: Date.now(),
+      timeStr: latestTimeStr,
+      dateStr,
+      type: 'POC / Value Area Balanced',
+      price: pocPrice,
+      details: `POC & Value Area balanced around ${pocPrice.toFixed(5)} (VAH: ${vahPrice.toFixed(5)}, VAL: ${valPrice.toFixed(5)}). Rotational two-way auction.`,
+      severity: 'info',
+    });
+  }
+
+  // 10C. Price Reaching Previous Day Key Levels (Prev VAH, Prev VAL, Prev POC)
+  if (prevLevels) {
+    const pipVal = symbolConfig.pipValue;
+    const currentPrice = close;
+
+    // Check Previous Day VAH
+    const vahDistPips = Math.abs(currentPrice - prevLevels.vah) / pipVal;
+    const isTestingPrevVAH = vahDistPips <= 7 || (sessionHigh >= prevLevels.vah && sessionLow <= prevLevels.vah);
+    if (isTestingPrevVAH) {
+      const isAcceptedAbove = currentPrice > prevLevels.vah + stepSize;
+      events.push({
+        id: `prev-vah-test-${Date.now()}`,
+        timestamp: Date.now(),
+        timeStr: latestTimeStr,
+        dateStr,
+        type: isAcceptedAbove ? 'Previous Day Level Reached' : 'Testing Previous Day VAH',
+        price: prevLevels.vah,
+        details: isAcceptedAbove
+          ? `Price accepted above Previous Day VAH (${prevLevels.vah.toFixed(5)}). Bullish acceptance above prior value area.`
+          : `Price (${currentPrice.toFixed(5)}) reaching Previous Day VAH (${prevLevels.vah.toFixed(5)}). Key overhead resistance.`,
+        severity: isAcceptedAbove ? 'critical' : 'high',
+      });
+    }
+
+    // Check Previous Day VAL
+    const valDistPips = Math.abs(currentPrice - prevLevels.val) / pipVal;
+    const isTestingPrevVAL = valDistPips <= 7 || (sessionHigh >= prevLevels.val && sessionLow <= prevLevels.val);
+    if (isTestingPrevVAL) {
+      const isAcceptedBelow = currentPrice < prevLevels.val - stepSize;
+      events.push({
+        id: `prev-val-test-${Date.now()}`,
+        timestamp: Date.now(),
+        timeStr: latestTimeStr,
+        dateStr,
+        type: isAcceptedBelow ? 'Previous Day Level Reached' : 'Testing Previous Day VAL',
+        price: prevLevels.val,
+        details: isAcceptedBelow
+          ? `Price accepted below Previous Day VAL (${prevLevels.val.toFixed(5)}). Bearish acceptance below prior value area.`
+          : `Price (${currentPrice.toFixed(5)}) reaching Previous Day VAL (${prevLevels.val.toFixed(5)}). Key lower support level.`,
+        severity: isAcceptedBelow ? 'critical' : 'high',
+      });
+    }
+
+    // Check Previous Day POC
+    const pocDistPips = Math.abs(currentPrice - prevLevels.poc) / pipVal;
+    const isTestingPrevPOC = pocDistPips <= 7 || (sessionHigh >= prevLevels.poc && sessionLow <= prevLevels.poc);
+    if (isTestingPrevPOC) {
+      events.push({
+        id: `prev-poc-test-${Date.now()}`,
+        timestamp: Date.now(),
+        timeStr: latestTimeStr,
+        dateStr,
+        type: 'Testing Previous Day POC',
+        price: prevLevels.poc,
+        details: `Price (${currentPrice.toFixed(5)}) reaching Previous Day Point of Control (${prevLevels.poc.toFixed(5)}). Primary fair value node.`,
+        severity: 'high',
+      });
+    }
+  }
 
   // IB Breakout
   if (close > ibHigh) {
     events.push({
       id: `ib-break-high-${Date.now()}`,
       timestamp: Date.now(),
-      timeStr: candles[candles.length - 1].timeStr,
+      timeStr: latestTimeStr,
       dateStr,
       type: 'Initial Balance Breakout',
       price: close,
@@ -431,7 +620,7 @@ export function buildMarketProfile(
     events.push({
       id: `ib-break-low-${Date.now()}`,
       timestamp: Date.now(),
-      timeStr: candles[candles.length - 1].timeStr,
+      timeStr: latestTimeStr,
       dateStr,
       type: 'Initial Balance Breakout',
       price: close,
@@ -445,7 +634,7 @@ export function buildMarketProfile(
     events.push({
       id: `value-accept-high-${Date.now()}`,
       timestamp: Date.now(),
-      timeStr: candles[candles.length - 1].timeStr,
+      timeStr: latestTimeStr,
       dateStr,
       type: 'Acceptance Above Value',
       price: close,
@@ -456,7 +645,7 @@ export function buildMarketProfile(
     events.push({
       id: `value-accept-low-${Date.now()}`,
       timestamp: Date.now(),
-      timeStr: candles[candles.length - 1].timeStr,
+      timeStr: latestTimeStr,
       dateStr,
       type: 'Acceptance Below Value',
       price: close,
@@ -470,7 +659,7 @@ export function buildMarketProfile(
     events.push({
       id: `single-prints-${Date.now()}`,
       timestamp: Date.now(),
-      timeStr: candles[candles.length - 1].timeStr,
+      timeStr: latestTimeStr,
       dateStr,
       type: 'Single Prints',
       price: singlePrintPrices[0],
@@ -484,7 +673,7 @@ export function buildMarketProfile(
     events.push({
       id: `poor-high-${Date.now()}`,
       timestamp: Date.now(),
-      timeStr: candles[candles.length - 1].timeStr,
+      timeStr: latestTimeStr,
       dateStr,
       type: 'Poor High',
       price: sessionHigh,
@@ -496,7 +685,7 @@ export function buildMarketProfile(
     events.push({
       id: `poor-low-${Date.now()}`,
       timestamp: Date.now(),
-      timeStr: candles[candles.length - 1].timeStr,
+      timeStr: latestTimeStr,
       dateStr,
       type: 'Poor Low',
       price: sessionLow,
@@ -675,6 +864,8 @@ export function buildMarketProfile(
     },
     bias,
     statusText,
+    hasPrevDayProfileComplete,
+    prevDayLevels: prevLevels || undefined,
   };
 }
 

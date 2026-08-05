@@ -81,6 +81,13 @@ export type EventType =
   | 'Acceptance Below Value'
   | 'POC Migration Higher'
   | 'POC Migration Lower'
+  | 'POC / Value Area Balanced'
+  | 'Buying Tail Developing'
+  | 'Selling Tail Developing'
+  | 'Testing Previous Day VAH'
+  | 'Testing Previous Day VAL'
+  | 'Testing Previous Day POC'
+  | 'Previous Day Level Reached'
   | 'Failed Auction'
   | 'Successful Auction'
   | 'Single Prints'
@@ -183,6 +190,8 @@ export interface MarketProfileData {
   };
   bias: AuctionBias;
   statusText: string;
+  hasPrevDayProfileComplete?: boolean;
+  prevDayLevels?: { vah: number; val: number; poc: number };
 }
 
 export type QualityRating = 'Excellent' | 'Good' | 'Average' | 'Poor';
@@ -444,11 +453,118 @@ export interface ProfessionalForecast {
 export type ActiveTabType =
   | 'forecast'
   | 'dashboard'
+  | 'risk'
+  | 'news'
   | 'scanner'
+  | 'signals'
   | 'correlation'
   | 'similarity'
   | 'chart'
   | 'library'
   | 'alerts'
   | 'settings';
+
+export type TrackedSignalStatus = 'Pending' | 'Target Hit' | 'Stop Hit' | 'No Follow-Through' | 'Expired';
+
+export interface MarketProfileSnapshot {
+  profileShape: ProfileShape;
+  marketScore: number;
+  qualityRating: QualityRating;
+  poc: number;
+  vah: number;
+  val: number;
+  ibHigh: number;
+  ibLow: number;
+  bias: AuctionBias;
+  atr14Pips: number;
+}
+
+export interface TrackedSignal {
+  id: string;                      // e.g. "SIG-20260804-001"
+  dateStr: string;                 // e.g. "2026-08-04"
+  timeStr: string;                 // e.g. "14:25"
+  timestamp: number;               // creation epoch ms
+  symbol: SymbolCode;              // e.g. "GBPUSD"
+  signalType: string;              // e.g. "BULLISH_IMBALANCE", "BUY", "Buying Tail Developing", etc.
+  direction: 'LONG' | 'SHORT';
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  targetPips: number;
+  stopPips: number;
+  riskReward: number;
+  
+  marketProfileSnapshot: MarketProfileSnapshot;
+  
+  status: TrackedSignalStatus;
+  closedAt?: number;               // resolution epoch ms
+  timeToTargetMinutes?: number;    // elapsed minutes to hit target
+  rMultiple?: number;              // realized R (e.g. +1.80, -1.00)
+  pnlPips?: number;                // realized pips
+  highestPriceReached?: number;    // peak price reached
+  lowestPriceReached?: number;     // lowest price reached
+  lastEvaluatedPrice?: number;
+  lastEvaluatedTimestamp?: number;
+  rationale?: string[];
+}
+
+export interface SignalTrackerStats {
+  totalSignals: number;
+  pendingCount: number;
+  targetHitCount: number;
+  stopHitCount: number;
+  noFollowThroughCount: number;
+  expiredCount: number;
+  resolvedCount: number;
+  winRate: number;                 // % (0 - 100)
+  lossRate: number;                // % (0 - 100)
+  averageRMultiple: number;        // e.g. +1.45 R
+  averageTimeToTargetMinutes: number; // e.g. 38 mins
+  profitFactor: number;            // e.g. 2.40
+  totalPnlPips: number;            // e.g. +420 pips
+}
+
+export interface EconomicEvent {
+  id: string;
+  timeUtc: string;
+  currency: string;
+  event: string;
+  impact: 'HIGH' | 'MEDIUM' | 'LOW';
+  forecast: string;
+  previous: string;
+  status: 'Upcoming' | 'Live' | 'Released' | 'Completed';
+  countdownStr: string;
+  actual?: string;
+}
+
+export interface NewsComparisonItem {
+  dateStr: string;
+  similarityPct: number;
+  nextDayOutcome: 'Bullish' | 'Bearish' | 'Range';
+  majorNews: string;
+  newsSimilarityPct: number;
+  combinedConfidencePct: number;
+}
+
+export interface NewsAdjustedScore {
+  profileSimilarityPct: number;
+  historicalAccuracyPct: number;
+  newsSimilarityPct: number;
+  currentVolatilityMatchPct: number;
+  overallConfidencePct: number;
+}
+
+export interface SmartNewsWatchData {
+  symbol: SymbolCode;
+  relevantCurrencies: string[];
+  todayEvents: EconomicEvent[];
+  highImpactCount: number;
+  nextHighImpactEvent: EconomicEvent | null;
+  countdownTimerStr: string;
+  dailyMarketSummary: string;
+  tradingWarnings: string[];
+  aiMarketForecastEnhanced: string;
+  newsAdjustedScore: NewsAdjustedScore;
+  tradeTimingRecommendations: string[];
+}
 

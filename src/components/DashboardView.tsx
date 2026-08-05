@@ -19,6 +19,7 @@ import {
   TrendingDown,
   TrendingUp,
   Zap,
+  Newspaper,
 } from 'lucide-react';
 import {
   Candle,
@@ -47,6 +48,7 @@ interface DashboardViewProps {
   onSelectPair: (symbol: SymbolCode) => void;
   onOpenFullChart: () => void;
   onOpenSimilarityTab?: () => void;
+  onOpenNewsTab?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -60,6 +62,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onSelectPair,
   onOpenFullChart,
   onOpenSimilarityTab,
+  onOpenNewsTab,
 }) => {
   const [showScoreBreakdownModal, setShowScoreBreakdownModal] = useState(false);
 
@@ -285,8 +288,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </p>
             </div>
           </div>
-          <div className="text-xs text-[#71717a] font-mono">
-            Updated Daily
+          <div className="flex items-center gap-3">
+            {onOpenNewsTab && (
+              <button
+                onClick={onOpenNewsTab}
+                className="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <Newspaper className="w-3.5 h-3.5 text-amber-400" />
+                <span>Smart News Watch</span>
+              </button>
+            )}
+            <div className="text-xs text-[#71717a] font-mono">
+              Updated Daily
+            </div>
           </div>
         </div>
 
@@ -586,48 +600,81 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           />
         </div>
 
-        {/* Live Detected Imbalances Feed */}
+        {/* Live Detected Imbalances & Auction Events Feed */}
         <div className="lg:col-span-4 bg-[#111113] border border-[#2d2d30] rounded-2xl p-5 shadow-2xl space-y-3 flex flex-col justify-between">
-          <div className="flex items-center justify-between border-b border-[#2d2d30] pb-3">
-            <div className="flex items-center gap-2 font-bold text-sm text-[#e0e0e0]">
-              <Flame className="w-4 h-4 text-amber-400" />
-              <span>Live Detected Auction Events</span>
+          <div>
+            <div className="flex items-center justify-between border-b border-[#2d2d30] pb-3">
+              <div className="flex items-center gap-2 font-bold text-sm text-[#e0e0e0]">
+                <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
+                <span>Live Auction Events Monitor</span>
+              </div>
+              <span className="text-xs font-mono text-emerald-400 font-bold bg-emerald-950/80 border border-emerald-800/80 px-2 py-0.5 rounded">
+                {currentProfile.events.length} Live
+              </span>
             </div>
-            <span className="text-xs font-mono text-[#71717a]">
-              {currentProfile.events.length} Events Detected
-            </span>
+
+            {/* Quick Summary Bar of Detected Auction Features */}
+            <div className="grid grid-cols-3 gap-1.5 my-3 font-mono text-[10px]">
+              <div className="bg-[#0c0c0e] p-2 rounded border border-[#2d2d30] text-center">
+                <span className="text-[#71717a] block">Tails</span>
+                <span className="font-bold text-emerald-400">
+                  {currentProfile.events.filter(e => e.type.includes('Tail')).length} Active
+                </span>
+              </div>
+              <div className="bg-[#0c0c0e] p-2 rounded border border-[#2d2d30] text-center">
+                <span className="text-[#71717a] block">POC / VA</span>
+                <span className="font-bold text-amber-400">
+                  {currentProfile.events.filter(e => e.type.includes('POC') || e.type.includes('Value')).length} Alerts
+                </span>
+              </div>
+              <div className="bg-[#0c0c0e] p-2 rounded border border-[#2d2d30] text-center">
+                <span className="text-[#71717a] block">Prev Day</span>
+                <span className="font-bold text-blue-400">
+                  {currentProfile.events.filter(e => e.type.includes('Previous Day')).length} Tested
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+          <div className="space-y-2 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
             {currentProfile.events.length > 0 ? (
-              currentProfile.events.map((evt) => (
-                <div
-                  key={evt.id}
-                  className="p-3 rounded-lg bg-[#0c0c0e] border border-[#2d2d30] flex items-start justify-between gap-3 text-xs font-mono"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 font-bold">
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] ${
-                          evt.severity === 'critical'
-                            ? 'bg-red-950 text-red-400 border border-red-800'
-                            : evt.severity === 'high'
-                            ? 'bg-amber-950 text-amber-400 border border-amber-800'
-                            : 'bg-blue-950 text-blue-400 border border-blue-800'
-                        }`}
-                      >
-                        {evt.type}
-                      </span>
-                      <span className="text-[#e0e0e0]">{formatPrice(evt.price, currentProfile.symbol)}</span>
+              currentProfile.events.map((evt) => {
+                const badgeStyle =
+                  evt.type === 'Buying Tail Developing'
+                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800 font-extrabold'
+                    : evt.type === 'Selling Tail Developing'
+                    ? 'bg-rose-950 text-rose-300 border border-rose-800 font-extrabold'
+                    : evt.type === 'POC / Value Area Balanced'
+                    ? 'bg-indigo-950 text-indigo-300 border border-indigo-800 font-extrabold'
+                    : evt.type.includes('Previous Day')
+                    ? 'bg-amber-950 text-amber-300 border border-amber-700 font-extrabold'
+                    : evt.severity === 'critical'
+                    ? 'bg-red-950 text-red-400 border border-red-800'
+                    : evt.severity === 'high'
+                    ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                    : 'bg-blue-950 text-blue-400 border border-blue-800';
+
+                return (
+                  <div
+                    key={evt.id}
+                    className="p-3 rounded-lg bg-[#0c0c0e] border border-[#2d2d30] flex items-start justify-between gap-3 text-xs font-mono hover:border-blue-500/30 transition-all"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 font-bold flex-wrap">
+                        <span className={`px-2 py-0.5 rounded text-[10px] ${badgeStyle}`}>
+                          {evt.type}
+                        </span>
+                        <span className="text-[#ffffff] font-extrabold">{formatPrice(evt.price, currentProfile.symbol)}</span>
+                      </div>
+                      <div className="text-[#a1a1aa] text-[11px] font-sans leading-snug">{evt.details}</div>
                     </div>
-                    <div className="text-[#71717a] text-[11px] font-sans">{evt.details}</div>
+                    <div className="text-[10px] text-[#71717a] shrink-0 font-bold">{evt.timeStr}</div>
                   </div>
-                  <div className="text-[10px] text-[#71717a] shrink-0">{evt.timeStr}</div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="p-8 text-center text-[#71717a] text-xs font-mono">
-                No Auction Imbalances Detected Yet
+                No Auction Events Detected Yet
               </div>
             )}
           </div>

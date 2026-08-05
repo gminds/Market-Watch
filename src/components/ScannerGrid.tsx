@@ -9,21 +9,27 @@ import {
   ExternalLink,
   ShieldAlert,
   Info,
+  Target,
+  BarChart3,
 } from 'lucide-react';
-import { QualityRating, ScannerAlertAction, ScannerPairItem, SymbolCode } from '../types/market';
+import { QualityRating, ScannerAlertAction, ScannerPairItem, SymbolCode, MarketProfileData } from '../types/market';
 import { formatPrice } from '../config/symbols';
+import { SignalOutcomeTrackerView } from './SignalOutcomeTrackerView';
 
 interface ScannerGridProps {
   scannerItems: ScannerPairItem[];
   onSelectPair: (symbol: SymbolCode) => void;
   activeSymbol: SymbolCode;
+  activeProfile?: MarketProfileData | null;
 }
 
 export const ScannerGrid: React.FC<ScannerGridProps> = ({
   scannerItems,
   onSelectPair,
   activeSymbol,
+  activeProfile,
 }) => {
+  const [viewMode, setViewMode] = useState<'matrix' | 'tracker' | 'both'>('matrix');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionFilter, setActionFilter] = useState<'ALL' | 'BUY' | 'SELL' | 'Watch'>('ALL');
   const [sortField, setSortField] = useState<'score' | 'symbol' | 'atr'>('score');
@@ -90,8 +96,56 @@ export const ScannerGrid: React.FC<ScannerGridProps> = ({
   };
 
   return (
-    <div className="bg-[#111113] border border-[#2d2d30] rounded-xl shadow-2xl p-5 space-y-4">
-      {/* Table Header Controls */}
+    <div className="space-y-6">
+      {/* Top Module Sub-Tab Switcher */}
+      <div className="flex items-center justify-between bg-[#111113] border border-[#2d2d30] p-2 rounded-xl shadow-xl">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setViewMode('matrix')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold font-mono flex items-center gap-2 transition-all ${
+              viewMode === 'matrix'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-[#71717a] hover:text-[#e0e0e0] hover:bg-[#18181b]'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-blue-300" />
+            <span>Multi-Pair Scanner Matrix</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode('tracker')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold font-mono flex items-center gap-2 transition-all ${
+              viewMode === 'tracker'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'text-[#71717a] hover:text-[#e0e0e0] hover:bg-[#18181b]'
+            }`}
+          >
+            <Target className="w-4 h-4 text-emerald-300 animate-pulse" />
+            <span>Signal Outcome Tracker & Statistics</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode('both')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold font-mono flex items-center gap-2 transition-all ${
+              viewMode === 'both'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-[#71717a] hover:text-[#e0e0e0] hover:bg-[#18181b]'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-indigo-300" />
+            <span>Combined Dual View</span>
+          </button>
+        </div>
+
+        <div className="text-xs font-mono text-[#71717a] hidden sm:block">
+          Active Pair: <span className="text-white font-bold">{activeSymbol}</span>
+        </div>
+      </div>
+
+      {/* Scanner Matrix View */}
+      {(viewMode === 'matrix' || viewMode === 'both') && (
+        <div className="bg-[#111113] border border-[#2d2d30] rounded-xl shadow-2xl p-5 space-y-4">
+          {/* Table Header Controls */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2d2d30] pb-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 font-bold text-base text-[#ffffff]">
@@ -313,6 +367,16 @@ export const ScannerGrid: React.FC<ScannerGridProps> = ({
           </tbody>
         </table>
       </div>
+    </div>
+  )}
+
+      {/* Signal Outcome Tracker View */}
+      {(viewMode === 'tracker' || viewMode === 'both') && (
+        <SignalOutcomeTrackerView
+          currentProfile={activeProfile}
+          onSelectPair={onSelectPair}
+        />
+      )}
     </div>
   );
 };
