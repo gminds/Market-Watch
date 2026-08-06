@@ -21,6 +21,7 @@ interface ScannerGridProps {
   onSelectPair: (symbol: SymbolCode) => void;
   activeSymbol: SymbolCode;
   activeProfile?: MarketProfileData | null;
+  switchingTargetSymbol?: SymbolCode | null;
 }
 
 export const ScannerGrid: React.FC<ScannerGridProps> = ({
@@ -28,6 +29,7 @@ export const ScannerGrid: React.FC<ScannerGridProps> = ({
   onSelectPair,
   activeSymbol,
   activeProfile,
+  switchingTargetSymbol,
 }) => {
   const [viewMode, setViewMode] = useState<'matrix' | 'tracker' | 'both'>('matrix');
   const [searchQuery, setSearchQuery] = useState('');
@@ -225,12 +227,15 @@ export const ScannerGrid: React.FC<ScannerGridProps> = ({
             {sorted.length > 0 ? (
               sorted.map((item) => {
                 const isActive = item.symbol === activeSymbol;
+                const isTarget = switchingTargetSymbol === item.symbol;
                 return (
                   <tr
                     key={item.symbol}
                     onClick={() => onSelectPair(item.symbol)}
                     className={`cursor-pointer transition-colors ${
-                      isActive
+                      isTarget
+                        ? 'bg-blue-950/60 border-l-4 border-l-blue-400 font-bold'
+                        : isActive
                         ? 'bg-blue-950/40 border-l-4 border-l-blue-500 font-bold'
                         : 'hover:bg-[#161618]'
                     }`}
@@ -239,11 +244,15 @@ export const ScannerGrid: React.FC<ScannerGridProps> = ({
                     <td className="p-3">
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-white text-sm">{item.symbol}</span>
-                        {isActive && (
+                        {isTarget ? (
+                          <span className="px-1.5 py-0.2 rounded bg-indigo-600 text-white text-[9px] uppercase font-sans animate-pulse font-bold">
+                            Switching...
+                          </span>
+                        ) : isActive ? (
                           <span className="px-1.5 py-0.2 rounded bg-blue-500 text-white text-[9px] uppercase font-sans">
                             Active
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       <div className="text-[10px] text-[#71717a] truncate max-w-[140px] font-sans">
                         {item.name}

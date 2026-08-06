@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useDeferredValue } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -34,11 +34,12 @@ import {
 import { TpoHistogram } from './TpoHistogram';
 import { ScannerGrid } from './ScannerGrid';
 import { SignalChartPanel } from './SignalChartPanel';
+import { DashboardLoadingState } from './DashboardLoadingState';
 import { profileRecordToMarketProfile } from '../services/tpoEngine';
 import { formatPrice, getSymbolConfig } from '../config/symbols';
 
 interface DashboardViewProps {
-  currentProfile: MarketProfileData;
+  currentProfile: MarketProfileData | null;
   yesterdayProfile: DailyProfileRecord | null;
   candles: Candle[];
   settings: UserSettings;
@@ -49,6 +50,8 @@ interface DashboardViewProps {
   onOpenFullChart: () => void;
   onOpenSimilarityTab?: () => void;
   onOpenNewsTab?: () => void;
+  isSwitchingSymbol?: boolean;
+  switchingTargetSymbol?: SymbolCode | null;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -63,15 +66,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenFullChart,
   onOpenSimilarityTab,
   onOpenNewsTab,
+  isSwitchingSymbol,
+  switchingTargetSymbol,
 }) => {
   const [showScoreBreakdownModal, setShowScoreBreakdownModal] = useState(false);
 
-  if (!currentProfile) return null;
+  // Render lightweight loading state immediately if switching symbols or profile not ready
+  if (
+    isSwitchingSymbol ||
+    !currentProfile ||
+    (switchingTargetSymbol && currentProfile.symbol !== switchingTargetSymbol)
+  ) {
+    return <DashboardLoadingState targetSymbol={switchingTargetSymbol || settings.symbol} />;
+  }
 
-  const isUpDay = currentProfile.close >= currentProfile.open;
-  const symbolConfig = getSymbolConfig(currentProfile.symbol);
+  const activeProfile = currentProfile;
+  const isUpDay = activeProfile.close >= activeProfile.open;
+  const symbolConfig = getSymbolConfig(activeProfile.symbol);
   const pipDivisor = symbolConfig.pipValue || 0.0001;
-  const rawPips = (currentProfile.close - currentProfile.open) / pipDivisor;
+  const rawPips = (activeProfile.close - activeProfile.open) / pipDivisor;
   
   const pipsChangeText =
     Math.abs(rawPips) < 10 && Math.abs(rawPips) > 0
@@ -408,7 +421,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <ScannerGrid
         scannerItems={scannerItems}
         onSelectPair={onSelectPair}
-        activeSymbol={currentProfile.symbol}
+        activeSymbol={activeProfile.symbol}
+        switchingTargetSymbol={switchingTargetSymbol}
       />
 
       {/* Main Side-by-Side Market Profiles Grid */}

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ActiveTabType,
   AlertItem,
@@ -59,6 +59,11 @@ export default function App() {
   const [alertHistory, setAlertHistory] = useState<AlertItem[]>(() => alertEngine.getAlertHistory());
   const [activeToastAlert, setActiveToastAlert] = useState<AlertItem | null>(null);
 
+  // Asset Switching & Loading States
+  const [isSwitchingSymbol, setIsSwitchingSymbol] = useState<boolean>(false);
+  const [switchingTargetSymbol, setSwitchingTargetSymbol] = useState<SymbolCode | null>(null);
+  const requestSeqRef = useRef<number>(0);
+
   // Recalculate Profile Similarity Search whenever yesterdayProfile or historyRecords updates
   // Strictly uses Yesterday's completed Market Profile to search historical database and forecast today
   useEffect(() => {
@@ -112,9 +117,25 @@ export default function App() {
 
   // Initial Data Loading & Setup for Selected Symbol
   useEffect(() => {
+    const currentReqId = ++requestSeqRef.current;
+    let isCancelled = false;
+
     const initData = async () => {
+      setIsSwitchingSymbol(true);
+      setSwitchingTargetSymbol(settings.symbol);
+
+      // Yield turn to allow UI to paint loading state immediately
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (isCancelled || requestSeqRef.current !== currentReqId) return;
+
       const fetchedCandles = await dataProviderService.fetchHistoricalCandles(settings.symbol, 300);
+      if (isCancelled || requestSeqRef.current !== currentReqId) return;
+
       setCandles(fetchedCandles);
+
+      // Yield turn
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (isCancelled || requestSeqRef.current !== currentReqId) return;
 
       const todayStr = new Date().toISOString().split('T')[0];
       const profile = buildMarketProfile(
@@ -127,6 +148,7 @@ export default function App() {
         settings.tpoPriceStepPips
       );
 
+      if (isCancelled || requestSeqRef.current !== currentReqId) return;
       setCurrentProfile(profile);
 
       // Seed & Load History
@@ -179,28 +201,46 @@ export default function App() {
 
       // Initial scanner pass
       await refreshScan();
+
+      if (!isCancelled && requestSeqRef.current === currentReqId) {
+        setIsSwitchingSymbol(false);
+        setSwitchingTargetSymbol(null);
+      }
     };
 
     initData();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [settings.symbol, settings.sessionStartUTC, settings.sessionEndUTC, settings.tpoPriceStepPips, settings.alertScoreThreshold]);
 
-  // Recurring 1-minute live scan & market profile calculation
+  // Recurring 3-second live scan & market profile calculation (paused during asset switching)
   useEffect(() => {
     const tickInterval = setInterval(() => {
-      refreshScan();
-    }, 2000); // 2s ticker loop for live responsive scanner updates
+      if (!isSwitchingSymbol) {
+        refreshScan();
+      }
+    }, 3000);
 
     return () => clearInterval(tickInterval);
-  }, [settings]);
+  }, [settings, isSwitchingSymbol]);
 
   const handleSelectPair = (symbol: SymbolCode) => {
+    if (symbol === settings.symbol && !isSwitchingSymbol) return;
+
+    setIsSwitchingSymbol(true);
+    setSwitchingTargetSymbol(symbol);
     setTradeSignal(null);
     setYesterdayProfile(null);
     setSimilarityResult(null);
     scannerEngine.clearPairCandles(symbol);
-    const updated = { ...settings, symbol };
-    setSettings(updated);
-    storageService.saveUserSettings(updated);
+
+    React.startTransition(() => {
+      const updated = { ...settings, symbol };
+      setSettings(updated);
+      storageService.saveUserSettings(updated);
+    });
   };
 
   const handleSaveSettings = (newSettings: UserSettings) => {
@@ -227,7 +267,7 @@ export default function App() {
 
       {/* Main Tab Content */}
       <main className="pb-12">
-        {activeTab === 'dashboard' && currentProfile && (
+        {activeTab === 'dashboard' && (
           <DashboardView
             currentProfile={currentProfile}
             yesterdayProfile={yesterdayProfile}
@@ -241,6 +281,8 @@ export default function App() {
             onOpenSimilarityTab={() => setActiveTab('similarity')}
             onOpenForecastTab={() => setActiveTab('forecast')}
             onOpenNewsTab={() => setActiveTab('news')}
+            isSwitchingSymbol={isSwitchingSymbol}
+            switchingTargetSymbol={switchingTargetSymbol}
           />
         )}
 
@@ -262,6 +304,7 @@ export default function App() {
               onSelectPair={handleSelectPair}
               activeSymbol={settings.symbol}
               activeProfile={currentProfile}
+              switchingTargetSymbol={switchingTargetSymbol}
             />
           </div>
         )}
